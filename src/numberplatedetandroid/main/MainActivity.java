@@ -22,9 +22,11 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.util.Log;
 import android.view.Menu;
+import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.View.OnTouchListener;
 
 public class MainActivity extends Activity implements CvCameraViewListener2
 {
@@ -34,6 +36,7 @@ public class MainActivity extends Activity implements CvCameraViewListener2
 	private CameraBridgeViewBase _mOpenCvCameraView;
 	private Mat _cRgba;
 	private Mat _cGray;
+	private boolean _setSaveNextFrame;
 	
 	private Detector _detector;
 	private OCRClassifier _classifier;
@@ -74,8 +77,11 @@ public class MainActivity extends Activity implements CvCameraViewListener2
 		_mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
 		_mOpenCvCameraView.setCvCameraViewListener(this);
 		
+		_mOpenCvCameraView.setOnTouchListener(new CustomOnTouchListener(this));
+		
 		_detector = new ShapeBasedDetector();
 		_classifier = new OCRClassifier();
+		_setSaveNextFrame = false;
 	}
 
 	@Override
@@ -120,14 +126,21 @@ public class MainActivity extends Activity implements CvCameraViewListener2
 	@Override
 	public Mat onCameraFrame(CvCameraViewFrame inputFrame)
 	{
-		_cRgba = inputFrame.rgba();
-		_cGray = inputFrame.gray();
+		if(_setSaveNextFrame)
+		{
+			_cRgba = inputFrame.rgba();
+			_cGray = inputFrame.gray();
+			
+			runDetect();
+			_setSaveNextFrame = false;
+		}
 
-		return _cRgba;
+		return inputFrame.rgba();
 	}
 
-	public void detectOnClick( View view )
+	public void runDetect()
 	{		
+		app.plates.clear();
 		List<Rect> shapes = _detector.detect( _cGray );
 		_detector.drawInterestAreas( _cRgba, shapes );
 		
@@ -140,19 +153,32 @@ public class MainActivity extends Activity implements CvCameraViewListener2
 				Bitmap bplate = Bitmap.createBitmap( pplate.cols(), pplate.rows(), Bitmap.Config.ARGB_8888 );
 				Utils.matToBitmap( pplate, bplate );
 				
-				app.plate = bplate;
-				app.textResult = code;
+				Plate p = new Plate( code, bplate );
+				app.plates.add(p);
 			}
 		}
 
-		Intent intent = new Intent( this, DisplayResults.class );
-
-		Bitmap img = Bitmap.createBitmap( _cRgba.cols(), _cRgba.rows(), Bitmap.Config.ARGB_8888 );
-		Utils.matToBitmap( _cRgba, img );
-		
-		app.results = img;
-		
+		Intent intent = new Intent( this, DisplayResults.class );		
 		startActivity(intent);
+	}
+	
+	private class CustomOnTouchListener implements OnTouchListener
+	{
+		MainActivity _act;
+		
+		public CustomOnTouchListener( MainActivity act )
+		{
+			this._act = act;
+		}
+
+		@Override
+		public boolean onTouch( View v, MotionEvent event )
+		{
+			_act._setSaveNextFrame = true;
+			
+			return false;
+		}
+		
 	}
 
 }
